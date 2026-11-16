@@ -2,7 +2,7 @@
 
 Real-time hand gesture recognition with MediaPipe that morphs 4,200 particles into shapes. *(Qo'l ishoralari → Zarralar)*
 
-🔗 **Live demo:** https://mnbvx13.github.io/gesture-particles/
+🔗 **Live demo:** https://qbaxtiyorov-lmnl.github.io/gesture-particles/
 
 ---
 
