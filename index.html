@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zarra – Qo'l ishoralari</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{height:100%;background:#000;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
+  #app{position:relative;height:100%}
+  .pane{position:absolute;background:#000}
+  #right{inset:0}
+  #left{left:16px;bottom:16px;width:clamp(170px,22vw,320px);aspect-ratio:4/3;border:2px solid #ffffff33;border-radius:14px;overflow:hidden;z-index:2;box-shadow:0 4px 20px #000a}
+  video,#hand,#fx{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  video,#hand{transform:scaleX(-1)}
+  #label{position:absolute;left:8px;top:6px;font:600 12px monospace;color:#39ff14;text-shadow:0 0 6px #000}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#000d;z-index:5;text-align:center;padding:20px;line-height:1.7}
+  #start button{font:600 18px system-ui;padding:14px 28px;border:0;border-radius:12px;background:#22d3ee;color:#001;cursor:pointer}
+  @media(max-width:700px){#left{width:38vw;left:10px;bottom:10px}}
+</style>
+</head>
+<body>
+<div id="start"><h2>Qo'l ishoralari → Zarralar</h2>
+<p>✌️ FOLLOW ME &nbsp; ✊ Raketa &nbsp; ☝️ Sayyora &nbsp; 👌 Yurak &nbsp; ✋ Zarralar buluti<br>
+👍 Yulduz &nbsp; 🤘 Chaqmoq &nbsp; 🤟 Galaktika &nbsp; 🖖 Atom (3 barmoq) &nbsp; 🤙 Kapalak</p>
+<button id="go">Kamerani yoqish</button><small id="err"></small></div>
+<div id="app">
+  <div class="pane" id="left"><video id="cam" playsinline muted></video><canvas id="hand"></canvas><div id="label">Qo'l kutilmoqda…</div></div>
+  <div class="pane" id="right"><canvas id="fx"></canvas></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js"></script>
+<script>
+const N = 4200, DPR = window.devicePixelRatio || 1;
+const $ = id => document.getElementById(id);
+const cam = $('cam'), hand = $('hand'), hctx = hand.getContext('2d');
+const fx = $('fx'), fctx = fx.getContext('2d');
+const rnd = Math.random, clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+// ====== ISHORALAR → SHAKL (xohlasangiz shu yerda o'zgartiring) ======
+const GESTURES = {
+  cloud:  {name:'ZARRALAR BULUTI', shape:'cloud'},      // ✋ ochiq kaft
+  peace:  {name:'FOLLOW ME',       shape:'follow'},     // ✌️ 1-rasm
+  fist:   {name:'RAKETA',          shape:'rocket'},     // ✊ 2-rasm
+  index:  {name:'SAYYORA',         shape:'planet'},     // ☝️
+  pinch:  {name:'YURAK',           shape:'heart'},      // 👌
+  thumb:  {name:'YULDUZ',          shape:'star'},       // 👍
+  rock:   {name:'CHAQMOQ',         shape:'bolt'},       // 🤘 ko'rsatkich + jimjiloq
+  love:   {name:'GALAKTIKA',       shape:'galaxy'},     // 🤟 bosh + ko'rsatkich + jimjiloq
+  three:  {name:'ATOM',            shape:'atom'},       // 🖖 3 barmoq (ko'rsatkich, o'rta, nomsiz)
+  shaka:  {name:'KAPALAK',         shape:'butterfly'}   // 🤙 bosh + jimjiloq
+};
+const SC = {planet:.58, galaxy:.95, atom:.9};            // shakl o'lchami
+
+// ====== Shakllar: har bir zarra uchun 3D nuqta ======
+const W = 600, H = 400, U = 300;
+function canvasPts(draw){
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'); draw(x);
+  const d = x.getImageData(0,0,W,H).data, pts = [];
+  for(let y=0;y<H;y++) for(let i=0;i<W;i++){ const k=(y*W+i)*4;
+    if(d[k+3]>128) pts.push({x:(i-W/2)/U, y:(y-H/2)/U, r:d[k], g:d[k+1], b:d[k+2]}); }
+  return Array.from({length:N},()=>{ const p=pts[(rnd()*pts.length)|0];
+    return {x:p.x, y:p.y, z:(rnd()-.5)*.16, r:p.r, g:p.g, b:p.b, ph:rnd()*6.28,
+            flame: p.r>250 && p.g>200 && p.b<40}; });
+}
+const sph=R=>{ const u=rnd()*6.283, v=Math.acos(2*rnd()-1); return [R*Math.sin(v)*Math.cos(u), R*Math.cos(v), R*Math.sin(v)*Math.sin(u)]; };
+const shapes = {};
+shapes.follow = canvasPts(x=>{
+  x.fillStyle='#fff'; x.font='900 118px Arial Black, Arial, sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+  x.fillText('FOLLOW',W/2,H/2-62); x.fillText('ME',W/2,H/2+68);
+}).map(p=>({...p, r:30+rnd()*70, g:190+rnd()*65, b:235+rnd()*20}));
+shapes.rocket = canvasPts(x=>{
+  x.translate(W/2,H/2-10);
+  x.fillStyle='#ff9a3c'; x.beginPath(); x.moveTo(-50,0); x.lineTo(-112,85); x.lineTo(-50,62); x.fill();
+  x.beginPath(); x.moveTo(50,0); x.lineTo(112,85); x.lineTo(50,62); x.fill();
+  x.fillStyle='#ff3b4a'; x.beginPath(); x.moveTo(0,-160); x.quadraticCurveTo(75,-85,52,65); x.lineTo(-52,65); x.quadraticCurveTo(-75,-85,0,-160); x.fill();
+  x.fillStyle='#fff'; x.beginPath(); x.arc(0,-35,30,0,7); x.fill();
+  x.fillStyle='#22d3ee'; x.beginPath(); x.arc(0,-35,21,0,7); x.fill();
+  x.fillStyle='#ffd000'; x.beginPath(); x.moveTo(-34,72); x.quadraticCurveTo(0,190,34,72); x.fill();
+});
+shapes.star = canvasPts(x=>{
+  x.translate(W/2,H/2); const g=x.createRadialGradient(0,0,10,0,0,185);
+  g.addColorStop(0,'#fff'); g.addColorStop(.5,'#ffe45c'); g.addColorStop(1,'#ffa800'); x.fillStyle=g; x.beginPath();
+  for(let i=0;i<10;i++){ const a=-Math.PI/2+i*Math.PI/5, r=i%2?78:185; x[i?'lineTo':'moveTo'](r*Math.cos(a),r*Math.sin(a)); }
+  x.closePath(); x.fill();
+});
+shapes.bolt = canvasPts(x=>{
+  x.translate(W/2,H/2); const g=x.createLinearGradient(0,-190,0,190);
+  g.addColorStop(0,'#fff'); g.addColorStop(.5,'#ffe94d'); g.addColorStop(1,'#ff9d00'); x.fillStyle=g; x.beginPath();
+  [[15,-190],[-75,25],[-12,25],[-50,190],[80,-55],[12,-55],[62,-190]].forEach((p,i)=>x[i?'lineTo':'moveTo'](p[0],p[1]));
+  x.closePath(); x.fill();
+});
+shapes.heart = Array.from({length:N},()=>{ const t=rnd()*6.283, k=1+(rnd()-.5)*.09;
+  return {x:k*16*Math.pow(Math.sin(t),3)/17*.9, y:.04-k*(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/17*.9,
+          z:(rnd()-.5)*.12, r:255, g:40+rnd()*50, b:90+rnd()*60, ph:rnd()*6.28}; });
+// Sayyora: shar + 2 qatlamli halqa (halqa endi ellips ko'rinishida)
+shapes.planet = Array.from({length:N},(_,i)=>{
+  if(i<N*.42){ const [x,y,z]=sph(.44); return {x,y,z, r:255, g:110+rnd()*70, b:20+rnd()*40, ph:rnd()*6.28}; }
+  const rad = rnd()<.45 ? .62+rnd()*.18 : .86+rnd()*.2;
+  return {orb:1.15/Math.pow(rad,1.5), rad, a:rnd()*6.283, x:0, y:(rnd()-.5)*.03, z:0, r:255, g:195+rnd()*60, b:110+rnd()*120, ph:rnd()*6.28}; });
+// Galaktika: 3 ta spiral shoxcha + yorqin yadro
+shapes.galaxy = Array.from({length:N},(_,i)=>{
+  const core=i<N*.16, rad=core?Math.pow(rnd(),2)*.22:.12+Math.pow(rnd(),.8)*.88, t=clamp(rad,0,1);
+  const a=core?rnd()*6.283:((rnd()*3)|0)*2.094+rad*4.2+(rnd()-.5)*(.55-.35*rad);
+  const lo=t<.4, u=lo?t/.4:(t-.4)/.6;
+  return {orb:.5, rad, a, x:0, z:0, y:(rnd()-.5)*.09*(1-t), ph:rnd()*6.28,
+          r:(lo?255-u*135:120+u*30)+rnd()*25, g:(lo?215-u*65:150-u*70)+rnd()*25, b:lo?150+u*105:255-u*25}; });
+// Atom: yadro + 3 ta elektron orbitasi
+shapes.atom = Array.from({length:N},(_,i)=>{
+  if(i<N*.12){ const [x,y,z]=sph(.11*Math.cbrt(rnd())); return {x,y,z, r:255, g:200+rnd()*55, b:100+rnd()*80, ph:rnd()*6.28}; }
+  const kk=(rnd()*3)|0, el=rnd()<.1;
+  return {orbit:1, k:kk*Math.PI/3, el, sp:el?2.2+kk*.35:0, a:el?kk*2.1+(rnd()-.5)*.26:rnd()*6.283, x:0, y:0, z:(rnd()-.5)*.03,
+          r:el?255:80+rnd()*50, g:el?255:180+rnd()*50, b:255, ph:rnd()*6.28}; });
+// Kapalak: "butterfly curve" parametrik egri chizig'i
+shapes.butterfly = Array.from({length:N},()=>{ const t=rnd()*37.7, k=.3+.7*Math.sqrt(rnd()),
+  r=Math.exp(Math.cos(t))-2*Math.cos(4*t)+Math.pow(Math.sin(t/12),5);
+  const x=Math.sin(t)*r*k/4.2*.95, y=-Math.cos(t)*r*k/4.2*.95, u=clamp((y+.8)/1.6,0,1), body=Math.abs(x)<.035;
+  return {x, y, z:(rnd()-.5)*.06, r:body?255:255-195*u, g:body?255:90+110*u, b:body?255:200+55*u, ph:rnd()*6.28}; });
+const PAL=[[70,110,255],[120,90,255],[60,170,255],[255,90,160]];
+shapes.cloud = Array.from({length:N},()=>{ const c=PAL[rnd()<.12?3:(rnd()*3)|0];
+  return {x:(rnd()+rnd()+rnd()-1.5)*.9, y:(rnd()+rnd()+rnd()-1.5)*.9, z:(rnd()+rnd()+rnd()-1.5)*.9, r:c[0], g:c[1], b:c[2], ph:rnd()*6.28}; });
+
+// ====== Zarralar ======
+const P = Array.from({length:N},()=>({x:0,y:0,vx:0,vy:0,r:70,g:110,b:255,init:false}));
+let cur = shapes.cloud, curKey = 'cloud';
+const A = {x:.5, y:.5, s:1, tx:.5, ty:.5, ts:1};   // shakl qo'l ortidan yuradi
+function resize(){ for(const c of [fx,hand]){ const r=c.parentElement.getBoundingClientRect(); c.width=r.width*DPR; c.height=r.height*DPR; } }
+addEventListener('resize', resize); resize();
+
+function frame(t){
+  const w=fx.width, h=fx.height, ts=t/1000;
+  fctx.globalCompositeOperation='source-over'; fctx.fillStyle='rgba(0,0,0,.30)'; fctx.fillRect(0,0,w,h);
+  fctx.globalCompositeOperation='lighter';
+  A.x+=(A.tx-A.x)*.10; A.y+=(A.ty-A.y)*.10; A.s+=(A.ts-A.s)*.08;
+  let cx=A.x*w, cy=A.y*h;
+  const key=curKey, base=Math.min(w,h)*.55*A.s*(SC[key]||(key==='cloud'?1.15:1));
+  if(key==='rocket'||key==='bolt') cx+=Math.sin(ts*45)*1.6*DPR;      // titroq
+  const sway=Math.sin(ts*1.1)*.5, beat=1+.05*Math.sin(ts*6)+.045*Math.sin(ts*12.5), pulse=1+.06*Math.sin(ts*5);
+  const flap=.3+.7*Math.abs(Math.cos(ts*4.2)), flash=Math.sin(ts*22)>.8, sz=(key==='planet'?2.6:2.1)*DPR;
+  for(let i=0;i<N;i++){
+    const p=P[i], q=cur[i];
+    let X=q.x, Y=q.y, Z=q.z, ry=sway, rx=Math.sin(ts*.9)*.12, rz=0, tr=q.r, tg=q.g, tb=q.b;
+    switch(key){
+      case 'planet': rz=-.22;
+        if(q.orb){ const a=q.a+ts*q.orb; X=q.rad*Math.cos(a); Z=q.rad*Math.sin(a); ry=0; rx=.4; } else { ry=ts*.8; rx=.2; } break;
+      case 'galaxy': { const a=q.a+ts*q.orb; X=q.rad*Math.cos(a); Z=q.rad*Math.sin(a); ry=0; rx=.8; rz=-.3; break; }
+      case 'cloud': ry=ts*.28; rx=ts*.13; X+=Math.sin(ts*.9+q.ph*3)*.07; Y+=Math.cos(ts*.8+q.ph*2)*.07; break;
+      case 'atom': ry=ts*.7; rx=.35;
+        if(q.orbit){ const a=q.a+ts*q.sp, x0=.95*Math.cos(a), y0=.38*Math.sin(a);
+          X=x0*Math.cos(q.k)-y0*Math.sin(q.k); Y=x0*Math.sin(q.k)+y0*Math.cos(q.k); } break;
+      case 'heart': X*=beat; Y*=beat; break;
+      case 'follow': Y+=Math.sin(X*4+ts*3)*.028; if(Math.sin(ts*5+q.ph*9)>.93){tr=255;tg=255;tb=255;} break;
+      case 'rocket': Y+=Math.sin(ts*3)*.03; X+=(rnd()-.5)*.012;
+        if(q.flame){ const f=(ts*2.4+q.ph)%1; Y=q.y+f*.5; X=q.x*(1-.7*f)+(rnd()-.5)*.05; tr=255; tg=215-160*f; tb=50-35*f; } break;
+      case 'star': rz=ts*.7; ry=sway*.5; X*=pulse; Y*=pulse; if(Math.sin(ts*5+q.ph*9)>.93){tr=255;tg=255;tb=255;} break;
+      case 'bolt': X+=(rnd()-.5)*.02; Y+=(rnd()-.5)*.02; if(flash){tr=255;tg=255;tb=255;} break;
+      case 'butterfly': X*=flap; Y+=Math.sin(ts*2)*.04; ry=sway*.4; break;
+    }
+    const c1=Math.cos(ry), s1=Math.sin(ry), c2=Math.cos(rx), s2=Math.sin(rx), c3=Math.cos(rz), s3=Math.sin(rz);
+    const x1=X*c1+Z*s1, z1=-X*s1+Z*c1, y2=Y*c2-z1*s2, z2=Y*s2+z1*c2;
+    const x3=x1*c3-y2*s3, y3=x1*s3+y2*c3, f=1/(1-z2*.3);
+    const tx=cx+x3*base*f, ty=cy+y3*base*f;
+    if(!p.init){ p.x=w/2+(rnd()-.5)*w; p.y=h/2+(rnd()-.5)*h; p.init=true; }
+    p.vx=(p.vx+(tx-p.x)*.075)*.80+(rnd()-.5)*.5*DPR;
+    p.vy=(p.vy+(ty-p.y)*.075)*.80+(rnd()-.5)*.5*DPR;
+    p.x+=p.vx; p.y+=p.vy;
+    p.r+=(tr-p.r)*.08; p.g+=(tg-p.g)*.08; p.b+=(tb-p.b)*.08;
+    const m=.62+.38*clamp(z2*.5+.5,0,1);
+    fctx.fillStyle=`rgb(${clamp(p.r*m,0,255)|0},${clamp(p.g*m,0,255)|0},${clamp(p.b*m,0,255)|0})`;
+    const s=sz*(.75+.35*f); fctx.fillRect(p.x-s/2,p.y-s/2,s,s);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ====== Ishorani aniqlash ======
+const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function ext(l, tip, pip){ return d(l[tip],l[0]) > d(l[pip],l[0])*1.12; }
+function detect(l){
+  const sc = d(l[0],l[9]);
+  const f = {i:ext(l,8,6), m:ext(l,12,10), r:ext(l,16,14), p:ext(l,20,18)};
+  const th = d(l[4],l[5]) > sc*.85;                              // bosh barmoq ochiqmi
+  if(d(l[4],l[8]) < sc*.38 && f.m && f.r) return 'pinch';
+  const n = f.i+f.m+f.r+f.p;
+  if(n===4) return 'cloud';
+  if(f.i && f.m && f.r && !f.p) return 'three';
+  if(f.i && f.m && !f.r && !f.p) return 'peace';
+  if(f.i && !f.m && !f.r && f.p) return th ? 'love' : 'rock';
+  if(f.i && !f.m && !f.r && !f.p) return 'index';
+  if(f.p && !f.i && !f.m && !f.r) return th ? 'shaka' : null;
+  if(n===0) return th ? 'thumb' : 'fist';
+  return null;
+}
+const CONN=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+let cand=null, candN=0, lastSeen=0;
+let curG='cloud';
+function setGesture(g){
+  if(g===curG) return;
+  curG=g; curKey=GESTURES[g].shape; cur=shapes[curKey]; $('label').textContent=GESTURES[g].name;
+  const kick=Math.min(fx.width,fx.height)*.06;                 // zarralar sochilib, yangi shaklga yig'iladi
+  for(const p of P){ const a=rnd()*6.283, k=kick*(.3+rnd()); p.vx+=Math.cos(a)*k; p.vy+=Math.sin(a)*k; }
+}
+const hands = new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`});
+hands.setOptions({maxNumHands:1, modelComplexity:1, minDetectionConfidence:.6, minTrackingConfidence:.6});
+hands.onResults(res=>{
+  hctx.clearRect(0,0,hand.width,hand.height);
+  const l = res.multiHandLandmarks && res.multiHandLandmarks[0];
+  if(!l){ A.tx=.5; A.ty=.5; A.ts=1;
+    if(performance.now()-lastSeen>800){ setGesture('cloud'); $('label').textContent="Qo'l kutilmoqda…"; } return; }
+  lastSeen = performance.now();
+  const W2=hand.width, H2=hand.height, vw=cam.videoWidth||640, vh=cam.videoHeight||480;
+  const k=Math.max(W2/vw,H2/vh), ox=(W2-vw*k)/2, oy=(H2-vh*k)/2, X=p=>p.x*vw*k+ox, Y=p=>p.y*vh*k+oy;
+  hctx.lineWidth=3; hctx.strokeStyle='#ff9a8a';
+  for(const [a,b] of CONN){ hctx.beginPath(); hctx.moveTo(X(l[a]),Y(l[a])); hctx.lineTo(X(l[b]),Y(l[b])); hctx.stroke(); }
+  hctx.fillStyle='#ff3b3b'; for(const p of l){ hctx.beginPath(); hctx.arc(X(p),Y(p),4,0,7); hctx.fill(); }
+  const pc=[0,5,9,13,17].map(i=>l[i]), mx=pc.reduce((s,p)=>s+p.x,0)/5, my=pc.reduce((s,p)=>s+p.y,0)/5;
+  A.tx=clamp(1-mx,.32,.68); A.ty=clamp(my,.34,.66); A.ts=clamp(d(l[0],l[9])/.17,.75,1.4);
+  const g = detect(l);
+  if(g && g===cand){ if(++candN>=4) setGesture(g); } else { cand=g; candN=0; }
+});
+$('go').onclick = async ()=>{
+  try{
+    const c = new Camera(cam,{onFrame:async()=>{await hands.send({image:cam});},width:640,height:480});
+    await c.start(); $('start').remove();
+  }catch(e){ $('err').textContent='Kamera ochilmadi: '+e.message+' (https yoki localhost kerak)'; }
+};
+</script>
+</body>
+</html>
